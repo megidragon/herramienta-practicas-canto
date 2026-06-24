@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estudio Vocal — Práctica de canto</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>🎤 Estudio Vocal</h1>
+      <p class="subtitle">Herramienta de práctica para cantantes</p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="playback" role="tab" aria-selected="true">
+        🔁 Playback diferido
+      </button>
+      <button class="tab" data-tab="scales" role="tab" aria-selected="false">
+        🎹 Escalas
+      </button>
+      <button class="tab" data-tab="tuner" role="tab" aria-selected="false">
+        🎯 Afinación
+      </button>
+      <button class="tab" data-tab="multitrack" role="tab" aria-selected="false">
+        🎛️ Multipista
+      </button>
+    </nav>
+
+    <!-- ============ MODO PLAYBACK ============ -->
+    <section class="panel active" id="panel-playback" role="tabpanel">
+      <p class="panel-desc">
+        El micrófono escucha mientras cantas. Tras el <strong>delay</strong> que elijas,
+        la web reproduce lo que cantaste. Durante la reproducción la captura se pausa
+        para que el audio reproducido <strong>no se vuelva a grabar</strong> (evita el eco).
+        El ciclo se repite indefinidamente.
+      </p>
+
+      <div class="controls">
+        <div class="control">
+          <label for="delay">Delay / duración de cada toma</label>
+          <div class="slider-row">
+            <input type="range" id="delay" min="1" max="60" step="0.5" value="3">
+            <output id="delay-val">3.0 s</output>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-box" id="pb-status">
+        <div class="status-light" id="pb-light"></div>
+        <div class="status-text">
+          <div class="status-phase" id="pb-phase">Detenido</div>
+          <div class="status-detail" id="pb-detail">Pulsa «Iniciar» y permite el micrófono.</div>
+        </div>
+        <div class="meter"><div class="meter-fill" id="pb-meter"></div></div>
+      </div>
+
+      <div class="progress pb-progress"><div class="progress-fill" id="pb-progress"></div></div>
+
+      <canvas id="pb-scope" class="scope"></canvas>
+
+      <div class="pitch-box">
+        <div class="pitch-main">
+          <span class="pitch-note" id="pb-note">—</span>
+          <span class="pitch-solf" id="pb-solf"></span>
+        </div>
+        <div class="pitch-meter">
+          <div class="pitch-scale"><span>♭ -50¢</span><span>afinado</span><span>+50¢ ♯</span></div>
+          <div class="cents-bar"><div class="cents-zero"></div><div class="cents-needle" id="pb-needle"></div></div>
+          <div class="pitch-cents" id="pb-cents"></div>
+        </div>
+      </div>
+
+      <button class="big-btn start" id="pb-toggle">▶ Iniciar</button>
+
+      <p class="hint">💡 Usa auriculares para una práctica más limpia. Necesita permiso de micrófono.</p>
+    </section>
+
+    <!-- ============ MODO ESCALAS ============ -->
+    <section class="panel" id="panel-scales" role="tabpanel" hidden>
+      <p class="panel-desc">
+        Reproduce patrones de calentamiento vocal. Elige el tipo de escala, la nota raíz,
+        la octava inicial y cuántas octavas sube.
+      </p>
+
+      <div class="controls grid">
+        <div class="control">
+          <label for="scale-type">Tipo de escala</label>
+          <select id="scale-type"></select>
+        </div>
+
+        <div class="control">
+          <label for="root">Nota raíz</label>
+          <select id="root">
+            <option>C</option><option>C#</option><option>D</option><option>D#</option>
+            <option>E</option><option>F</option><option>F#</option><option>G</option>
+            <option>G#</option><option>A</option><option>A#</option><option>B</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="start-octave">Octava inicial</label>
+          <select id="start-octave">
+            <option>2</option><option selected>3</option><option>4</option><option>5</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="octaves">Octavas que sube</label>
+          <select id="octaves">
+            <option>1</option><option selected>2</option><option>3</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="step">Sube por</label>
+          <select id="step">
+            <option value="1">Semitono</option>
+            <option value="2" selected>Tono</option>
+          </select>
+        </div>
+
+        <div class="control">
+          <label for="bpm">Tempo (BPM)</label>
+          <div class="slider-row">
+            <input type="range" id="bpm" min="50" max="200" step="5" value="100">
+            <output id="bpm-val">100</output>
+          </div>
+        </div>
+
+        <div class="control">
+          <label for="wave">Sonido</label>
+          <select id="wave">
+            <option value="triangle" selected>Triángulo</option>
+            <option value="sine">Seno</option>
+            <option value="square">Cuadrada</option>
+            <option value="sawtooth">Sierra</option>
+          </select>
+        </div>
+
+        <div class="control checkbox">
+          <label><input type="checkbox" id="updown" checked> Subir y bajar</label>
+        </div>
+
+        <div class="control">
+          <label for="rep-pause">Pausa entre repeticiones</label>
+          <select id="rep-pause">
+            <option value="0">Sin pausa</option>
+            <option value="0.25">¼ de la escala</option>
+            <option value="0.5" selected>½ de la escala</option>
+            <option value="1">Igual (×1)</option>
+            <option value="1.5">×1.5</option>
+            <option value="2">×2</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="note-display" id="note-display">
+        <div class="note-name" id="note-name">—</div>
+        <div class="note-sub" id="note-sub">Listo para empezar</div>
+        <div class="progress"><div class="progress-fill" id="scale-progress"></div></div>
+        <div class="rep-info" id="rep-info"></div>
+      </div>
+
+      <button class="big-btn start" id="scale-toggle">▶ Reproducir escala</button>
+    </section>
+
+    <!-- ============ MODO AFINACIÓN ============ -->
+    <section class="panel" id="panel-tuner" role="tabpanel" hidden>
+      <p class="panel-desc">
+        Toca el piano para oír cada nota de referencia y canta para ver tu tono dibujado en
+        tiempo real sobre la rejilla de notas. La tecla que cantas se resalta; ajusta tu voz
+        hasta que la línea quede sobre la nota objetivo y centrada en 0¢. 🎧 Auriculares recomendados.
+      </p>
+
+      <div class="tn-controls">
+        <button id="tn-mic" class="mt-btn">🎤 Activar micrófono</button>
+        <label class="mt-field">Octava inicial
+          <select id="tn-octave"><option>2</option><option selected>3</option><option>4</option></select>
+        </label>
+        <label class="mt-field">Octavas
+          <select id="tn-octaves"><option>2</option><option selected>3</option><option>4</option></select>
+        </label>
+        <label class="mt-field">Sonido
+          <select id="tn-wave">
+            <option value="triangle" selected>Triángulo</option>
+            <option value="sine">Seno</option>
+            <option value="square">Cuadrada</option>
+            <option value="sawtooth">Sierra</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="pitch-box">
+        <div class="pitch-main">
+          <span class="pitch-note" id="tn-note">—</span>
+          <span class="pitch-solf" id="tn-solf"></span>
+        </div>
+        <div class="pitch-meter">
+          <div class="pitch-scale"><span>♭ -50¢</span><span>afinado</span><span>+50¢ ♯</span></div>
+          <div class="cents-bar"><div class="cents-zero"></div><div class="cents-needle" id="tn-needle"></div></div>
+          <div class="pitch-cents" id="tn-cents"></div>
+        </div>
+      </div>
+
+      <canvas id="tn-graph" class="tn-graph"></canvas>
+
+      <div class="tn-piano"><div class="tn-keys" id="tn-keys"></div></div>
+
+      <p class="hint">💡 Pulsa una tecla: suena y queda marcada como objetivo (línea punteada). Canta esa nota y ajústala hasta que tu trazo quede sobre ella.</p>
+    </section>
+
+    <!-- ============ MODO MULTIPISTA ============ -->
+    <section class="panel" id="panel-multitrack" role="tabpanel" hidden>
+      <p class="panel-desc">
+        Graba varias pistas con el micrófono (voz, guitarra, ritmo…) y combínalas como en un
+        mini estudio. Mueve los clips en la rejilla, ajusta volumen, silencia/solo, repite en
+        bucle y exporta la mezcla a WAV.
+        <strong>🎧 Usa auriculares al sobregrabar</strong> para que el micro no capte las otras pistas.
+      </p>
+
+      <div class="mt-transport">
+        <button id="mt-rec" class="mt-btn rec">● Grabar pista</button>
+        <button id="mt-play" class="mt-btn">▶ Reproducir</button>
+        <button id="mt-stop" class="mt-btn">■ Stop</button>
+        <button id="mt-tostart" class="mt-btn" title="Volver al inicio">⏮</button>
+        <span class="mt-time" id="mt-time">0:00.0</span>
+        <label class="mt-field">BPM <input type="number" id="mt-bpm" min="40" max="240" value="100"></label>
+        <label class="mt-toggle"><input type="checkbox" id="mt-metro"> Metrónomo</label>
+        <label class="mt-toggle"><input type="checkbox" id="mt-countin" checked> Cuenta previa</label>
+        <label class="mt-toggle"><input type="checkbox" id="mt-loop"> Bucle</label>
+        <label class="mt-toggle"><input type="checkbox" id="mt-monitor" checked> Escuchar al grabar</label>
+        <label class="mt-toggle"><input type="checkbox" id="mt-snap" checked> Ajustar a rejilla</label>
+      </div>
+
+      <div class="mt-transport second">
+        <label class="mt-field">Master <input type="range" id="mt-master" min="0" max="1.5" step="0.01" value="1"></label>
+        <label class="mt-field">Latencia <input type="range" id="mt-latency" min="0" max="300" step="5" value="0"><output id="mt-latency-val">0 ms</output></label>
+        <span class="mt-zoom">Zoom
+          <button id="mt-zoom-out" class="mt-btn small">−</button>
+          <button id="mt-zoom-in" class="mt-btn small">+</button>
+        </span>
+        <button id="mt-import" class="mt-btn small">📂 Importar audio</button>
+        <input type="file" id="mt-file" accept="audio/*" hidden>
+        <button id="mt-export" class="mt-btn small">💾 Exportar mezcla</button>
+        <button id="mt-clear" class="mt-btn small danger">Vaciar</button>
+      </div>
+
+      <div class="mt-daw" id="mt-daw">
+        <div class="mt-content" id="mt-content">
+          <div class="mt-row mt-rulerrow">
+            <div class="mt-corner"></div>
+            <div class="mt-ruler" id="mt-ruler"></div>
+          </div>
+          <div class="mt-tracks" id="mt-tracks">
+            <div class="mt-empty" id="mt-empty">Aún no hay pistas. Pulsa «● Grabar pista» o «📂 Importar audio» para empezar.</div>
+          </div>
+          <div class="mt-playhead" id="mt-playhead"></div>
+        </div>
+      </div>
+
+      <p class="hint">💡 Flujo típico: graba la base (ritmo/guitarra) con cuenta previa y bucle; luego sobregraba la voz escuchando por auriculares. Arrastra los clips para alinearlos.</p>
+    </section>
+
+    <footer class="footer">
+      <small>Ejecuta esta página desde <code>http://localhost</code> (no <code>file://</code>) para que funcione el micrófono.</small>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
