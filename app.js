@@ -1164,7 +1164,6 @@ window.addEventListener('beforeunload', () => {
    Reutiliza detectPitchMPM() / freqToMidiFloat() / midiToInfo().
    ========================================================= */
 (function () {
-  const WHITE_W = 40, BLACK_W = 26;     // ancho de teclas (px)
   const GUTTER = 36;                    // margen izquierdo del gráfico (etiquetas)
   const BLACK_PC = [1, 3, 6, 8, 10];    // clases de nota que son teclas negras
 
@@ -1242,10 +1241,19 @@ window.addEventListener('beforeunload', () => {
 
   /* ---------- construcción del teclado ---------- */
   function buildKeyboard() {
-    tn.startOctave = parseInt(octaveSel.value, 10);
-    tn.octaves = parseInt(octavesSel.value, 10);
+    tn.startOctave = parseInt(octaveSel.value, 10) || 3;
+    tn.octaves = parseInt(octavesSel.value, 10) || 3;
     tn.midiLow = noteToMidi('C', tn.startOctave);
     tn.midiHigh = noteToMidi('C', tn.startOctave + tn.octaves);
+
+    // Contar teclas blancas para ajustar el ancho al contenedor (que entre todo)
+    let whiteCount = 0;
+    for (let m = tn.midiLow; m <= tn.midiHigh; m++) {
+      if (BLACK_PC.indexOf(((m % 12) + 12) % 12) === -1) whiteCount++;
+    }
+    const avail = ((keysEl.parentElement && keysEl.parentElement.clientWidth) || 840) - 16;
+    const whiteW = Math.max(22, Math.min(56, Math.floor(avail / whiteCount)));
+    const blackW = Math.round(whiteW * 0.62);
 
     keysEl.innerHTML = '';
     let whiteIndex = 0;
@@ -1257,13 +1265,13 @@ window.addEventListener('beforeunload', () => {
         const key = document.createElement('div');
         key.className = 'tn-wkey';
         key.dataset.midi = m;
-        key.style.left = (whiteIndex * WHITE_W) + 'px';
-        key.style.width = WHITE_W + 'px';
+        key.style.left = (whiteIndex * whiteW) + 'px';
+        key.style.width = whiteW + 'px';
         key.innerHTML = '<span class="tn-klabel">' + (pc === 0 ? info.label : NOTE_NAMES[pc]) + '</span>';
         keysEl.appendChild(key);
         whiteIndex++;
       } else {
-        blacks.push({ m, pc, left: whiteIndex * WHITE_W - BLACK_W / 2 });
+        blacks.push({ m, pc, left: whiteIndex * whiteW - blackW / 2 });
       }
     }
     for (const b of blacks) {
@@ -1271,15 +1279,21 @@ window.addEventListener('beforeunload', () => {
       key.className = 'tn-bkey';
       key.dataset.midi = b.m;
       key.style.left = b.left + 'px';
-      key.style.width = BLACK_W + 'px';
+      key.style.width = blackW + 'px';
       keysEl.appendChild(key);
     }
-    keysEl.style.width = (whiteIndex * WHITE_W) + 'px';
+    keysEl.style.width = (whiteIndex * whiteW) + 'px';
 
     keysEl.querySelectorAll('.tn-wkey, .tn-bkey').forEach(key => {
       const midi = parseInt(key.dataset.midi, 10);
       key.addEventListener('pointerdown', (e) => { e.preventDefault(); noteOn(midi, key); });
     });
+
+    // Restaurar la marca de "objetivo" tras reconstruir
+    if (tn.targetMidi != null) {
+      const el = keysEl.querySelector('.tn-wkey[data-midi="' + tn.targetMidi + '"], .tn-bkey[data-midi="' + tn.targetMidi + '"]');
+      if (el) el.classList.add('target');
+    }
   }
 
   /* ---------- detección y dibujo ---------- */
@@ -1447,16 +1461,13 @@ window.addEventListener('beforeunload', () => {
   }
 
   /* ---------- refresco al abrir la pestaña / cambiar rango ---------- */
+  // Reconstruye el teclado para ajustarlo al ancho visible (que entre todo el rango).
   function refresh() {
-    if (!keysEl.children.length) buildKeyboard();
-    sizeGraph();
-    drawGrid();
-  }
-  function rebuild() {
     buildKeyboard();
     sizeGraph();
     drawGrid();
   }
+  const rebuild = refresh;
 
   /* ---------- eventos ---------- */
   micBtn.addEventListener('click', () => { if (tn.detecting) stopDetect(); else startDetect(); });
@@ -1464,10 +1475,14 @@ window.addEventListener('beforeunload', () => {
   octavesSel.addEventListener('change', rebuild);
   document.addEventListener('pointerup', releaseAll);
   document.addEventListener('pointercancel', releaseAll);
-  window.addEventListener('resize', () => { if (panels.tuner && !panels.tuner.hidden) { sizeGraph(); if (!tn.detecting) drawGrid(); } });
+  window.addEventListener('resize', () => { if (panels.tuner && !panels.tuner.hidden) refresh(); });
   const tunerTab = document.querySelector('.tab[data-tab="tuner"]');
   if (tunerTab) tunerTab.addEventListener('click', () => setTimeout(refresh, 0));
   window.addEventListener('beforeunload', () => { if (tn.stream) tn.stream.getTracks().forEach(t => t.stop()); });
 
+  // Fijar los valores por defecto en JS (algunos navegadores restauran el <select>
+  // de una sesión anterior e ignoran el atributo "selected" del HTML).
+  octaveSel.value = String(tn.startOctave);
+  octavesSel.value = String(tn.octaves);
   buildKeyboard();
 })();
