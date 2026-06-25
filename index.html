@@ -206,9 +206,23 @@
 
       <canvas id="tn-graph" class="tn-graph"></canvas>
 
+      <!-- Grabaciones de afinación: referencia visual superpuesta -->
+      <div class="tn-rec">
+        <div class="tn-rec-bar">
+          <button id="tn-record" class="mt-btn rec">⏺ Grabar afinación</button>
+          <button id="tn-import" class="mt-btn small">📂 Importar audio → tono</button>
+          <input type="file" id="tn-audiofile" accept="audio/*" hidden>
+          <label class="mt-toggle"><input type="checkbox" id="tn-hearref" checked> 🔊 Oír referencia</label>
+          <span class="tn-rec-status" id="tn-rec-status"></span>
+          <button id="tn-clearall" class="mt-btn small danger" hidden>Borrar todas</button>
+        </div>
+        <div class="tn-reclist" id="tn-reclist"></div>
+      </div>
+
       <div class="tn-piano"><div class="tn-keys" id="tn-keys"></div></div>
 
       <p class="hint">💡 Pulsa una tecla: suena y queda marcada como objetivo (línea punteada). Canta esa nota y ajústala hasta que tu trazo quede sobre ella.</p>
+      <p class="hint">🎙️ <strong>Grabar afinación</strong> guarda tu trazo de tono. Luego «▶ Reproducir» lo superpone en otro color como referencia: canta y comprueba si tu línea (turquesa) coincide con la grabada. Las grabaciones quedan guardadas; bórralas con 🗑.</p>
     </section>
 
     <!-- ============ MODO MULTIPISTA ============ -->

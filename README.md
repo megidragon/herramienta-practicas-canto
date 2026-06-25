@@ -22,6 +22,17 @@ Piano clicable que reproduce cada nota de referencia y un **monitor de tono** qu
 en tiempo real lo que cantas sobre una rejilla de notas. La tecla cantada se resalta y un
 indicador de *cents* muestra la afinación. Reutiliza el mismo detector de tono.
 
+**Grabaciones de referencia:** con «⏺ Grabar afinación» guardas tu trazo de tono. Luego
+«▶ Reproducir» lo **superpone en otro color** sobre el monitor en tiempo real (desplazándose
+en bucle), para comprobar si tu línea (turquesa) coincide con la grabada. Puedes reproducir
+varias a la vez (cada una con su color), oír un tono de referencia sintetizado («🔊 Oír
+referencia») y borrarlas con 🗑. Las grabaciones se guardan en el navegador (`localStorage`),
+así que persisten entre sesiones.
+
+**Importar audio → tono:** «📂 Importar audio» analiza cualquier archivo de audio con el
+mismo detector y crea una grabación de referencia a partir de su melodía. Útil para usar como
+referencia la voz de una canción (idealmente una pista de voz aislada).
+
 ### 🎛️ Multipista
 Mini estudio / looper: graba varias pistas con el micro (voz, guitarra, ritmo…), con
 metrónomo y cuenta previa, sobregraba escuchando las demás, mueve los clips en la rejilla,
@@ -33,11 +44,18 @@ El micrófono necesita un **contexto seguro**: sirve la página desde `http://lo
 (no abras el archivo como `file://`).
 
 ```bash
-# con Python
-python -m http.server 8000      # luego abre http://localhost:8000
+# con Node (servidor incluido, sin dependencias)
+npm start                       # luego abre http://localhost:8000
 
-# o con Node
-npx serve
+# el puerto/host son configurables
+PORT=3000 npm start
+```
+
+Otras alternativas:
+
+```bash
+python -m http.server 8000      # con Python
+npx serve                       # con el paquete «serve»
 ```
 
 En PhpStorm: usa «Open in Browser» (servidor interno en `http://localhost:63342/...`).

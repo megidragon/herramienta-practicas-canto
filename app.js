@@ -1174,12 +1174,21 @@ window.addEventListener('beforeunload', () => {
     startOctave: 3, octaves: 3, midiLow: 0, midiHigh: 0,
     active: {}, sungEl: null, targetMidi: null,
     windowSec: 6,
+    // --- grabaciones / referencia visual ---
+    recording: false, recStart: null, recPoints: [],
+    recordings: [], playbacks: [], hearRef: true,
   };
 
   const $ = (id) => document.getElementById(id);
   const micBtn = $('tn-mic'), octaveSel = $('tn-octave'), octavesSel = $('tn-octaves'), waveSel = $('tn-wave');
   const noteEl = $('tn-note'), solfEl = $('tn-solf'), centsEl = $('tn-cents'), needleEl = $('tn-needle');
   const graphCv = $('tn-graph'), keysEl = $('tn-keys');
+  const recordBtn = $('tn-record'), importBtn = $('tn-import'), audioFileInput = $('tn-audiofile');
+  const hearRefChk = $('tn-hearref'), clearAllBtn = $('tn-clearall');
+  const recListEl = $('tn-reclist'), recStatusEl = $('tn-rec-status');
+  const REC_STORE_KEY = 'vocalStudio.tunerRecordings';
+  // Colores cálidos/distintos del trazo en vivo (turquesa) y del objetivo (violeta).
+  const REC_COLORS = ['#ff9f43', '#ff6b6b', '#ff6bd6', '#feca57', '#b388ff', '#a3cb38'];
 
   /* ---------- audio ---------- */
   function ensureCtx() {
@@ -1311,29 +1320,43 @@ window.addEventListener('beforeunload', () => {
       micBtn.textContent = '■ Detener micrófono';
       micBtn.classList.add('rec');
       sizeGraph();
-      detectLoop();
+      ensureLoop();
     }).catch(e => alert('No se pudo acceder al micrófono: ' + e.message));
   }
   function stopDetect() {
     tn.detecting = false;
-    cancelAnimationFrame(tn.rafId);
+    if (tn.recording) finishRecording();   // cerrar la grabación en curso al apagar el micro
     if (tn.source) { try { tn.source.disconnect(); } catch (e) {} tn.source = null; }
     micBtn.textContent = '🎤 Activar micrófono';
     micBtn.classList.remove('rec');
     tn.medBuf = [];
     updateReadout();
-    drawGrid();
+    // Si hay reproducciones, el bucle sigue; si no, se detiene solo y repinta la rejilla.
+    if (tn.playbacks.length === 0) {
+      if (tn.rafId) { cancelAnimationFrame(tn.rafId); tn.rafId = null; }
+      drawGrid();
+    }
   }
 
-  function detectLoop() {
-    if (!tn.detecting) return;
+  function ensureLoop() {
+    ensureCtx();
+    if (tn.rafId == null) tn.rafId = requestAnimationFrame(frame);
+  }
+  function frame() {
+    // El bucle sigue vivo mientras detectamos o haya alguna reproducción superpuesta.
+    if (!tn.detecting && tn.playbacks.length === 0) {
+      tn.rafId = null;
+      drawGrid();
+      return;
+    }
     const now = tn.ctx.currentTime;
-    if (now - tn.lastPitch > 0.04) {
+    if (tn.detecting && now - tn.lastPitch > 0.04) {
       tn.lastPitch = now;
       tn.analyser.getFloatTimeDomainData(tn.floatData);
       const det = detectPitchMPM(tn.floatData, tn.ctx.sampleRate);
+      let midi = null;
       if (det) {
-        const midi = freqToMidiFloat(det.freq);
+        midi = freqToMidiFloat(det.freq);
         tn.history.push({ t: now, midi });
         tn.medBuf.push(midi);
         if (tn.medBuf.length > 5) tn.medBuf.shift();
@@ -1341,12 +1364,16 @@ window.addEventListener('beforeunload', () => {
         tn.history.push({ t: now, midi: null });
         tn.medBuf = [];
       }
+      if (tn.recording) {
+        if (tn.recStart == null) tn.recStart = now;
+        tn.recPoints.push({ t: +(now - tn.recStart).toFixed(3), midi: midi == null ? null : +midi.toFixed(2) });
+      }
       const cutoff = now - tn.windowSec;
       while (tn.history.length && tn.history[0].t < cutoff) tn.history.shift();
       updateReadout();
     }
     drawGraph(now);
-    tn.rafId = requestAnimationFrame(detectLoop);
+    tn.rafId = requestAnimationFrame(frame);
   }
 
   function updateReadout() {
@@ -1434,6 +1461,7 @@ window.addEventListener('beforeunload', () => {
     const dpr = window.devicePixelRatio || 1;
     const W = graphCv.width, H = graphCv.height, GUT = GUTTER * dpr;
     drawGrid(c);
+    drawPlaybacks(now);   // referencias grabadas por debajo del trazo en vivo
 
     const tStart = now - tn.windowSec, xw = W - GUT;
     c.lineWidth = 2.4 * dpr;
@@ -1460,6 +1488,293 @@ window.addEventListener('beforeunload', () => {
     }
   }
 
+  /* =========================================================
+     Grabaciones de afinación: referencia visual superpuesta
+     ========================================================= */
+  function recById(id) { return tn.recordings.find(r => r.id === id); }
+  function colorFor(rec) { return REC_COLORS[rec.colorIndex % REC_COLORS.length]; }
+  function isPlaying(id) { return tn.playbacks.some(p => p.recId === id); }
+  function fmtDur(s) {
+    s = Math.max(0, s || 0);
+    const m = Math.floor(s / 60), sec = s - m * 60;
+    return m + ':' + sec.toFixed(1).padStart(4, '0');
+  }
+
+  /* ----- persistencia (localStorage) ----- */
+  function loadRecordings() {
+    try {
+      const raw = localStorage.getItem(REC_STORE_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      tn.recordings = Array.isArray(arr) ? arr : [];
+    } catch (e) { tn.recordings = []; }
+  }
+  function saveRecordings() {
+    try { localStorage.setItem(REC_STORE_KEY, JSON.stringify(tn.recordings)); }
+    catch (e) { recStatusEl.textContent = 'No se pudo guardar (almacenamiento lleno o bloqueado).'; }
+  }
+
+  function addRecording({ name, points, duration }) {
+    // Elige el primer color libre para distinguir varias referencias a la vez.
+    const used = tn.recordings.map(r => r.colorIndex);
+    let colorIndex = 0;
+    while (used.indexOf(colorIndex) !== -1 && colorIndex < REC_COLORS.length) colorIndex++;
+    if (colorIndex >= REC_COLORS.length) colorIndex = tn.recordings.length % REC_COLORS.length;
+    const rec = {
+      id: 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+      name, points, duration, createdAt: Date.now(), colorIndex,
+    };
+    tn.recordings.push(rec);
+    saveRecordings();
+    renderRecList();
+    return rec;
+  }
+  function deleteRecording(id) {
+    const i = tn.playbacks.findIndex(p => p.recId === id);
+    if (i >= 0) { stopOnePlayback(tn.playbacks[i]); tn.playbacks.splice(i, 1); }
+    tn.recordings = tn.recordings.filter(r => r.id !== id);
+    saveRecordings();
+    renderRecList();
+    stopLoopIfIdle();
+  }
+  function clearAllRecordings() {
+    if (!tn.recordings.length) return;
+    if (!confirm('¿Borrar todas las grabaciones de afinación? No se puede deshacer.')) return;
+    tn.playbacks.slice().forEach(stopOnePlayback);
+    tn.playbacks = [];
+    tn.recordings = [];
+    saveRecordings();
+    renderRecList();
+    stopLoopIfIdle();
+  }
+  function defaultName() {
+    let t = '';
+    try { t = new Date().toLocaleTimeString(); } catch (e) {}
+    return 'Grabación ' + (tn.recordings.length + 1) + (t ? ' · ' + t : '');
+  }
+
+  /* ----- captura en vivo ----- */
+  function toggleRecord() {
+    if (tn.recording) { finishRecording(); return; }
+    tn.recording = true;
+    tn.recStart = null;
+    tn.recPoints = [];
+    recordBtn.textContent = '■ Detener grabación';
+    recordBtn.classList.add('armed');
+    recStatusEl.textContent = 'Grabando afinación…';
+    if (!tn.detecting) startDetect();   // necesitamos el micrófono para capturar el tono
+  }
+  function finishRecording() {
+    if (!tn.recording) return;
+    tn.recording = false;
+    recordBtn.textContent = '⏺ Grabar afinación';
+    recordBtn.classList.remove('armed');
+    const pts = tn.recPoints; tn.recPoints = []; tn.recStart = null;
+    const dur = pts.length ? pts[pts.length - 1].t : 0;
+    const voiced = pts.reduce((n, p) => n + (p.midi != null ? 1 : 0), 0);
+    if (dur < 0.5 || voiced < 3) {
+      recStatusEl.textContent = 'Grabación descartada (demasiado corta o sin voz detectada).';
+      return;
+    }
+    smoothContour(pts);
+    addRecording({ name: defaultName(), points: pts, duration: dur });
+    recStatusEl.textContent = '';
+  }
+
+  // Filtro de mediana (ventana 5) sobre el contorno, respetando los huecos (null).
+  function smoothContour(points) {
+    const vals = points.map(p => p.midi);
+    for (let i = 0; i < points.length; i++) {
+      if (vals[i] == null) continue;
+      const w = [];
+      for (let k = -2; k <= 2; k++) { const v = vals[i + k]; if (v != null) w.push(v); }
+      if (w.length >= 3) { w.sort((a, b) => a - b); points[i].midi = +w[Math.floor(w.length / 2)].toFixed(2); }
+    }
+  }
+
+  /* ----- reproducción / superposición ----- */
+  function togglePlayback(id) {
+    const idx = tn.playbacks.findIndex(p => p.recId === id);
+    if (idx >= 0) {
+      stopOnePlayback(tn.playbacks[idx]);
+      tn.playbacks.splice(idx, 1);
+      renderRecList();
+      stopLoopIfIdle();
+      return;
+    }
+    ensureCtx();
+    const osc = tn.ctx.createOscillator();
+    const g = tn.ctx.createGain();
+    osc.type = 'sine';
+    g.gain.value = 0;
+    osc.connect(g); g.connect(tn.master);
+    osc.start();
+    tn.playbacks.push({ recId: id, startCtx: tn.ctx.currentTime, osc, gain: g });
+    ensureLoop();
+    renderRecList();
+  }
+  function stopOnePlayback(pb) {
+    if (!pb) return;
+    try {
+      const t = tn.ctx ? tn.ctx.currentTime : 0;
+      if (pb.gain) pb.gain.gain.setTargetAtTime(0, t, 0.02);
+      if (pb.osc) pb.osc.stop(t + 0.1);
+    } catch (e) {}
+  }
+  function stopLoopIfIdle() {
+    if (!tn.detecting && tn.playbacks.length === 0 && tn.rafId) {
+      cancelAnimationFrame(tn.rafId); tn.rafId = null; drawGrid();
+    }
+  }
+
+  // Muestra interpolada del contorno grabado en el instante tphase (segundos dentro de la toma).
+  function sampleMidiAt(rec, tphase) {
+    const pts = rec.points;
+    if (!pts.length) return null;
+    let lo = 0;
+    while (lo < pts.length - 1 && pts[lo + 1].t < tphase) lo++;
+    const a = pts[lo], b = pts[lo + 1];
+    if (!b) return a.midi;
+    if (a.midi == null || b.midi == null) return null;
+    const span = b.t - a.t;
+    const f = span > 0 ? (tphase - a.t) / span : 0;
+    return a.midi + (b.midi - a.midi) * f;
+  }
+
+  // Dibuja el contorno grabado desplazándose en bucle, igual que el trazo en vivo
+  // (el "ahora" queda en el borde derecho y lo pasado se va a la izquierda).
+  function drawContour(rec, ptRaw, color) {
+    const c = graphCv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = graphCv.width, H = graphCv.height, GUT = GUTTER * dpr;
+    const xw = W - GUT, dur = rec.duration || 0.001;
+    c.lineWidth = 2.2 * dpr;
+    c.strokeStyle = color;
+    c.beginPath();
+    let started = false;
+    const kMin = Math.floor((ptRaw - tn.windowSec) / dur);
+    const kMax = Math.ceil(ptRaw / dur);
+    for (let k = kMin; k <= kMax; k++) {
+      const off = k * dur;
+      for (let i = 0; i < rec.points.length; i++) {
+        const p = rec.points[i];
+        const age = ptRaw - (p.t + off);          // segundos antes de "ahora"
+        if (age < 0 || age > tn.windowSec) { started = false; continue; }
+        if (p.midi == null) { started = false; continue; }
+        const x = GUT + ((tn.windowSec - age) / tn.windowSec) * xw;
+        const y = midiToY(p.midi, H);
+        if (!started) { c.moveTo(x, y); started = true; } else { c.lineTo(x, y); }
+      }
+    }
+    c.stroke();
+  }
+
+  function drawPlaybacks(now) {
+    if (!tn.playbacks.length) return;
+    for (const pb of tn.playbacks) {
+      const rec = recById(pb.recId);
+      if (!rec || !rec.points.length) continue;
+      const ptRaw = now - pb.startCtx;
+      drawContour(rec, ptRaw, colorFor(rec));
+      // tono de referencia audible
+      if (pb.gain && pb.osc) {
+        const dur = rec.duration || 0.001;
+        const tphase = ((ptRaw % dur) + dur) % dur;
+        const m = sampleMidiAt(rec, tphase);
+        const t = tn.ctx.currentTime;
+        if (m == null || !tn.hearRef) {
+          pb.gain.gain.setTargetAtTime(0, t, 0.03);
+        } else {
+          pb.osc.frequency.setTargetAtTime(midiToFreq(m), t, 0.02);
+          pb.gain.gain.setTargetAtTime(0.12, t, 0.03);
+        }
+      }
+    }
+  }
+
+  /* ----- importar audio -> contorno de tono (reutiliza el detector MPM) ----- */
+  async function importAudioFile(file) {
+    if (!file) return;
+    ensureCtx();
+    recStatusEl.textContent = 'Leyendo «' + file.name + '»…';
+    let audio;
+    try {
+      const arr = await file.arrayBuffer();
+      audio = await tn.ctx.decodeAudioData(arr);
+    } catch (e) {
+      recStatusEl.textContent = 'No se pudo decodificar el audio (formato no soportado).';
+      return;
+    }
+    const sr = audio.sampleRate, N = audio.length, chN = audio.numberOfChannels;
+    const mono = new Float32Array(N);                 // mezcla a mono
+    for (let c = 0; c < chN; c++) {
+      const d = audio.getChannelData(c);
+      for (let i = 0; i < N; i++) mono[i] += d[i] / chN;
+    }
+    const win = 2048, hop = Math.max(256, Math.round(sr * 0.04));
+    const slice = new Float32Array(win);
+    const points = [];
+    const total = Math.max(1, Math.floor((N - win) / hop) + 1);
+    let frameN = 0;
+    for (let i = 0; i + win <= N; i += hop, frameN++) {
+      slice.set(mono.subarray(i, i + win));
+      const det = detectPitchMPM(slice, sr);
+      points.push({ t: +(i / sr).toFixed(3), midi: det ? +freqToMidiFloat(det.freq).toFixed(2) : null });
+      if (frameN % 40 === 0) {
+        recStatusEl.textContent = 'Analizando tono… ' + Math.round((frameN / total) * 100) + '%';
+        await new Promise(r => setTimeout(r));        // ceder el hilo para no congelar la interfaz
+      }
+    }
+    const voiced = points.reduce((n, p) => n + (p.midi != null ? 1 : 0), 0);
+    if (!voiced) { recStatusEl.textContent = 'No se detectó tono claro en el audio.'; return; }
+    smoothContour(points);
+    addRecording({ name: file.name.replace(/\.[^.]+$/, ''), points, duration: N / sr });
+    recStatusEl.textContent = 'Importado: ' + file.name + ' (' + voiced + ' puntos de tono).';
+  }
+
+  /* ----- lista de grabaciones ----- */
+  function renderRecList() {
+    recListEl.innerHTML = '';
+    clearAllBtn.hidden = tn.recordings.length === 0;
+    if (!tn.recordings.length) {
+      const empty = document.createElement('div');
+      empty.className = 'tn-rec-empty';
+      empty.textContent = 'Sin grabaciones. Pulsa «⏺ Grabar afinación» o importa un audio para crear una referencia.';
+      recListEl.appendChild(empty);
+      return;
+    }
+    for (const rec of tn.recordings) {
+      const item = document.createElement('div');
+      item.className = 'tn-recitem' + (isPlaying(rec.id) ? ' playing' : '');
+
+      const sw = document.createElement('span');
+      sw.className = 'tn-sw';
+      sw.style.background = colorFor(rec);
+
+      const info = document.createElement('div');
+      info.className = 'tn-recinfo';
+      const nm = document.createElement('div'); nm.className = 'tn-recnm'; nm.textContent = rec.name;
+      const meta = document.createElement('div'); meta.className = 'tn-recmeta'; meta.textContent = fmtDur(rec.duration);
+      info.appendChild(nm); info.appendChild(meta);
+
+      const spacer = document.createElement('div'); spacer.className = 'tn-recspacer';
+
+      const playBtn = document.createElement('button');
+      playBtn.className = 'mt-btn small';
+      playBtn.textContent = isPlaying(rec.id) ? '■ Detener' : '▶ Reproducir';
+      playBtn.addEventListener('click', () => togglePlayback(rec.id));
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'mt-btn small danger';
+      delBtn.textContent = '🗑';
+      delBtn.title = 'Borrar esta grabación';
+      delBtn.addEventListener('click', () => deleteRecording(rec.id));
+
+      item.appendChild(sw); item.appendChild(info); item.appendChild(spacer);
+      item.appendChild(playBtn); item.appendChild(delBtn);
+      recListEl.appendChild(item);
+    }
+  }
+
   /* ---------- refresco al abrir la pestaña / cambiar rango ---------- */
   // Reconstruye el teclado para ajustarlo al ancho visible (que entre todo el rango).
   function refresh() {
@@ -1473,6 +1788,15 @@ window.addEventListener('beforeunload', () => {
   micBtn.addEventListener('click', () => { if (tn.detecting) stopDetect(); else startDetect(); });
   octaveSel.addEventListener('change', rebuild);
   octavesSel.addEventListener('change', rebuild);
+  recordBtn.addEventListener('click', toggleRecord);
+  importBtn.addEventListener('click', () => audioFileInput.click());
+  audioFileInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    importAudioFile(f);
+    audioFileInput.value = '';   // permite reimportar el mismo archivo
+  });
+  hearRefChk.addEventListener('change', () => { tn.hearRef = hearRefChk.checked; });
+  clearAllBtn.addEventListener('click', clearAllRecordings);
   document.addEventListener('pointerup', releaseAll);
   document.addEventListener('pointercancel', releaseAll);
   window.addEventListener('resize', () => { if (panels.tuner && !panels.tuner.hidden) refresh(); });
@@ -1485,4 +1809,9 @@ window.addEventListener('beforeunload', () => {
   octaveSel.value = String(tn.startOctave);
   octavesSel.value = String(tn.octaves);
   buildKeyboard();
+
+  // Grabaciones persistentes
+  tn.hearRef = hearRefChk.checked;
+  loadRecordings();
+  renderRecList();
 })();

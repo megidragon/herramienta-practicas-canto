@@ -393,6 +393,26 @@ output {
 
 .tn-graph { display: block; width: 100%; height: 260px; background: #0c0e15; border-radius: 12px; margin-bottom: 14px; }
 
+/* Grabaciones de afinación (referencia visual) */
+.tn-rec { margin-bottom: 14px; }
+.tn-rec-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.tn-rec-bar .rec { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+.tn-rec-bar .rec.armed { animation: pulse 1s infinite; }
+.tn-rec-status { font-size: 0.82rem; color: var(--muted); flex: 1 1 160px; }
+.tn-reclist { display: flex; flex-direction: column; gap: 8px; }
+.tn-rec-empty { font-size: 0.82rem; color: var(--muted); padding: 6px 2px; }
+.tn-recitem {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border-radius: 10px; padding: 8px 12px;
+  border: 1px solid transparent;
+}
+.tn-recitem.playing { border-color: var(--accent-2); }
+.tn-sw { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; box-shadow: 0 0 6px rgba(0,0,0,.4); }
+.tn-recinfo { display: flex; flex-direction: column; min-width: 0; }
+.tn-recnm { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.tn-recmeta { font-size: 0.76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tn-recspacer { flex: 1; }
+
 .tn-piano { position: relative; height: 150px; background: #0c0e15; border-radius: 12px; padding: 8px; overflow-x: auto; }
 .tn-keys { position: relative; height: 100%; margin: 0 auto; }
 .tn-wkey {

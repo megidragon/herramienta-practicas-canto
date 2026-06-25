@@ -1,0 +1,12 @@
+{
+  "name": "sing-tool",
+  "version": "1.0.0",
+  "description": "Estudio Vocal — herramienta de práctica para cantantes (app web sin dependencias)",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
